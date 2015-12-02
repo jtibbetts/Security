@@ -1,0 +1,43 @@
+= csrf_meta_tag
+
+:javascript
+  jQuery(document).ready(function() {
+  });
+
+  function onClearLog() {
+    window.location = "/tool_consumer/clear_log";
+    return false;
+  }
+
+%h1 LTI Launcher
+
+%form{:method => "post", :action => "/tool_consumer"}
+  %input{:type => "hidden", :name => request_forgery_protection_token.to_s, :value => form_authenticity_token}
+  %table
+    -@payload_hash.each_pair do |k,v|
+      %tr
+        %td
+          %label #{k}
+        %td
+          %label &nbsp;&nbsp;&nbsp;
+        %td
+          %label #{v}
+    %tr
+      %td
+      %td
+        %select{ name: 'tool'}
+          %option{value: 'echo'} echo
+          %option{value: 'debug'} debug
+          %option{value: 'force_timeout'} force timeout
+          %option{value: 'launch_resource'} launch resource
+          %option{value: 'munge_secret'} munge secret
+          %option{value: 'munge_payload'} munge payload
+
+    %tr
+      %td
+        %label
+      %td
+        %input{:type => "submit", :value => "Launch", :class => "button"}
+      %td
+        %input{:type => "submit", :value => "Clear log", :class => "button", :onclick => "return onClearLog();"}
+

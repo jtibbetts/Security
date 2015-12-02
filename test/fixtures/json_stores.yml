@@ -1,0 +1,11 @@
+# Read about fixtures at http://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  uid: MyString
+  slug: MyString
+  json_str: MyText
+
+two:
+  uid: MyString
+  slug: MyString
+  json_str: MyText
