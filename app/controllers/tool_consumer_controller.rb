@@ -15,16 +15,9 @@ class ToolConsumerController < ApplicationController
       launch_payload[:exp] = Time.now.to_i + 5 * 60    # five minutes from now
     end
 
-    jwt_payload = JwtUtils.encode_jwt(launch_payload, JWT_SECRET)
-
-    form_params = ActiveSupport::HashWithIndifferentAccess.new
-    form_params[:jwt_payload] = jwt_payload
-
-    launch_form = create_lti_message("http://kinexis3001.ngrok.io/tool_provider/lti_launch/#{params[:tool]}",
-                                     form_params, params[:tool])
-
     tc_wire_log = Rails.application.config.tc_wire_log
-    JwtUtils.log_payload(tc_wire_log, jwt_payload, JWT_SECRET)
+    launch_form = JwtUtils.lti_launch_body("#{TOOL_PROVIDER}/tool_provider/lti_launch/#{params[:tool]}",
+                                     launch_payload, JWT_SECRET, tc_wire_log, params[:tool])
 
     render inline: launch_form
   end
@@ -46,7 +39,7 @@ class ToolConsumerController < ApplicationController
     payload_hash[:roles] = 'Learner'
     payload_hash[:context_id] = 'math-101.781816'
     payload_hash[:context_type] = 'CourseSection'
-    payload_hash[:launch_presentation_return_url] = 'http://kinexis3000.ngrok.io/tool_consumer'
+    payload_hash[:launch_presentation_return_url] = "#{TOOL_CONSUMER}/tool_consumer"
     payload_hash
   end
 

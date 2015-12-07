@@ -7,6 +7,8 @@ class PostResultsController < ApplicationController
     result_value = json_obj['result']
     puts "result_value: #{result_value}"
 
+    Activity.create(activity_type: 'outcomes', activity_name: 'result', activity_value: result_value)
+
     tc_wire_log = Rails.application.config.tc_wire_log
     tc_wire_log.log_response(response, "pseudo-outcome response") if tc_wire_log
 

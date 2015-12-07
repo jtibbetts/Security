@@ -3,9 +3,9 @@ class ToolProviderController  < ApplicationController
 
   EXPIRY_MINUTES = 5
 
-  TOOL_PROVIDER = 'tp'
+  TOOL_PROVIDER_CODE = 'tp'
   before_filter do |controller|
-    @tp_accessor = JsonAccessor.new(TOOL_PROVIDER)
+    @tp_accessor = JsonAccessor.new(TOOL_PROVIDER_CODE)
   end
 
 
@@ -112,7 +112,7 @@ class ToolProviderController  < ApplicationController
       @entry['results'] = []
     ensure
       @tp_accessor.store_entry(metasession_id, @entry)
-    end
+  end
 
     redirect_to '/tool_provider/lti_launch/launch_resource'
   end
@@ -138,7 +138,7 @@ class ToolProviderController  < ApplicationController
     outbuf += %Q(suffix='", "location":"2-1","timestamp":"#{Time.now.utc.iso8601}","metadata":"{}"}]}'\n)
     outbuf += %Q(CURL -H 'Authorization: Bearer #{jwt_payload}' )
     outbuf += %Q(-d "$prefix$1$suffix" )
-    outbuf += %Q(http://kinexis3001.ngrok.io/tool_provider/send_message)
+    outbuf += %Q(#{TOOL_PROVIDER}/tool_provider/send_message)
 
     fname = "scripts/#{label}_emit.sh"
     File.open(fname, "w") { |file| file.write outbuf }

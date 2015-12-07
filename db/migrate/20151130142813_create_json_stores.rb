@@ -7,5 +7,14 @@ class CreateJsonStores < ActiveRecord::Migration
 
       t.timestamps null: false
     end
+
+    create_table :activities do |t|
+      t.string :activity_type
+      t.string :activity_name
+      t.string :activity_value
+
+      t.timestamps null: false
+    end
+
   end
 end

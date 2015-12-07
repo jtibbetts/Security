@@ -18,7 +18,7 @@ class SendMessageController < ApplicationController
     headers = {}
     headers['content_type'] = 'application/json'
     headers["authorization: bearer #{jwt_payload}"]
-    uri = "http://kinexis3000.ngrok.io/tool_consumer/post_results"
+    uri = "#{TOOL_CONSUMER}/tool_consumer/post_results"
     data = json_obj.to_json
 
     tp_wire_log = Rails.application.config.tp_wire_log

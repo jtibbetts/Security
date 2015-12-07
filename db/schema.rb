@@ -13,6 +13,14 @@
 
 ActiveRecord::Schema.define(version: 20151130142813) do
 
+  create_table "activities", force: :cascade do |t|
+    t.string   "activity_type",  limit: 255
+    t.string   "activity_name",  limit: 255
+    t.string   "activity_value", limit: 255
+    t.datetime "created_at",                 null: false
+    t.datetime "updated_at",                 null: false
+  end
+
   create_table "json_stores", force: :cascade do |t|
     t.string   "store_id",   limit: 255
     t.string   "uid",        limit: 255
