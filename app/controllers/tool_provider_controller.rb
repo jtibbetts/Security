@@ -4,10 +4,6 @@ class ToolProviderController  < ApplicationController
   EXPIRY_MINUTES = 5
 
   TOOL_PROVIDER_CODE = 'tp'
-  before_filter do |controller|
-    @tp_accessor = JsonAccessor.new(TOOL_PROVIDER_CODE)
-  end
-
 
   def lti_launch
     if request.post?
@@ -18,7 +14,7 @@ class ToolProviderController  < ApplicationController
       if tool == 'munge_secret'
         secret = 'bad_secret'
       else
-        secret = JWT_SECRET
+        secret = TC_TP_SECRET
       end
 
       # TESTING: break the payload
@@ -27,15 +23,12 @@ class ToolProviderController  < ApplicationController
       end
 
       (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt_payload, secret)
-
-      tp_wire_log = Rails.application.config.tp_wire_log
-
-      if error_msg.nil?
-        JwtUtils.log_payload(tp_wire_log, jwt_payload, JWT_SECRET)
-      else
-        tp_wire_log.log("JWT Error: #{error_msg}")
-        raise error_msg
+      if error_msg.present?
+        raise "Authentication failure: #{error_msg}"
       end
+
+      # get eventstore endpoint
+      # (payload, jwt) = create_lti_service(url, "get", secret, EXPIRY_MINUTES, jwt_params)
 
       tool = 'echo' unless self.respond_to? tool
       self.public_send(tool, payload )
@@ -46,16 +39,18 @@ class ToolProviderController  < ApplicationController
 
   def echo params_hash
     outbuf = ''
-    outbuf << '<h1>Echo payload</h1><pre>'
+    outbuf << '<h1>LTI Tool Consumer:  Echo</h1><pre>'
     outbuf << JSON.pretty_generate(params_hash)
     outbuf << '</pre>'
+
+    outbuf << return_to_tool_consumer(params_hash['launch_presentation_return_url'])
 
     render inline: outbuf
   end
 
   def debug params_hash
     outbuf = ''
-    outbuf << '<h1>Debug</h1>'
+    outbuf << '<h1>LTI Tool Consumer:  Debug</h1><pre>'
     outbuf << '<h2>Echo JWT message</h2>'
     outbuf << '<pre>'
     outbuf << params[:jwt_payload]
@@ -70,20 +65,24 @@ class ToolProviderController  < ApplicationController
     outbuf << JSON.pretty_generate(JSON.load(Base64.decode64(zones[1])))
     outbuf << '</pre>'
 
+    outbuf << return_to_tool_consumer(params_hash['launch_presentation_return_url'])
+
     render inline: outbuf
   end
 
   def launch_resource params_hash=nil
-    @metasession_id = SecureRandom.uuid
-    session[:current_metasession_id] = @metasession_id
     if params_hash.present?
       session[:current_user_id] = params_hash['user_id']
       session[:current_context_id] = params_hash['context_id']
       session[:current_resource_link_id] = params_hash['resource_link_id']
+      session[:eventstore_profile_url] = params_hash['eventstore_profile_url']
+      # session[:launch_id] = params_hash['launch_id']
+      session[:return_url] = params_hash['launch_presentation_return_url']
+      @result_agent_id = session[:result_agent_id]
     end
 
-    # this 'fetch' initializes the metasession entry
-    @entries = @tp_accessor.fetch_entries()
+    # this 'fetch' initializes the result_agents entry
+    @result_agents = ResultAgentAccessor.fetch_result_agents()
 
     outbuf = ''
     outbuf << '<h1>Launch resource</h1>'
@@ -92,34 +91,35 @@ class ToolProviderController  < ApplicationController
   end
 
   def resource_harvester
-    metasession_id = session[:current_metasession_id]
-    @entry = @tp_accessor.fetch_entry(metasession_id)
+    result_agent_label = params[:result_agent_label]
+    @result_agent = ResultAgentAccessor.fetch_result_agent(result_agent_label)
     begin
-      metasession_label = params[:metasession_label]
-
-      jwt_payload = JwtUtils.create_jwt_bearer_token(EXPIRY_MINUTES,
-                                            metasession_id: metasession_id,
+      jwt_payload = JwtUtils.create_jwt(TC_TP_SECRET, EXPIRY_MINUTES,
+                                            result_agent_label: result_agent_label,
                                             user_id: session[:current_user_id],
                                             context_id: session[:current_context_id],
                                             resource_link_id: session[:current_resource_link_id])
 
-      emit_result_script(metasession_label, jwt_payload, Time.now + EXPIRY_MINUTES.minutes)
+      emit_result_script(result_agent_label, jwt_payload, Time.now + EXPIRY_MINUTES.minutes)
 
-      @entry['label'] = metasession_label
-      @entry['user_id'] = session['current_user_id']
-      @entry['context_id'] = session['current_context_id']
-      @entry['resource_link_id'] = session['current_resource_link_id']
-      @entry['results'] = []
+      @result_agent['user_id'] = session['current_user_id']
+      @result_agent['context_id'] = session['current_context_id']
+      @result_agent['resource_link_id'] = session['current_resource_link_id']
+      @result_agent['results'] = []
+
+      eventstore_access_key = @result_agent['eventstore_access_key']
+      emit_event(eventstore_access_key, result_agent_label, 'TP', 'session', 'create_emitter', result_agent_label)
     ensure
-      @tp_accessor.store_entry(metasession_id, @entry)
-  end
+      ResultAgentAccessor.store_result_agent(result_agent_label, @result_agent)
+      @result_agents = ResultAgentAccessor.fetch_result_agents()
+    end
 
     redirect_to '/tool_provider/lti_launch/launch_resource'
   end
 
   def clear_session
-    @tp_accessor.clear_entries
-    session[:current_metasession_id] = nil
+    ResultAgentAccessor.clear_result_agents
+    session[:current_result_agent_label] = nil
     Dir.glob('scripts/*_emit.sh').each {|fname| File.delete(fname)}
     redirect_to '/tool_provider/lti_launch/launch_resource'
   end
@@ -147,5 +147,14 @@ class ToolProviderController  < ApplicationController
     tp_wire_log = Rails.application.config.tp_wire_log
     tp_wire_log.log("Create data source:")
     tp_wire_log.log(outbuf)
+  end
+
+  def return_to_tool_consumer(return_url)
+    outbuf = ""
+    outbuf += %Q(\n<p><p>\n)
+    outbuf += %Q(<input type="button" value="Return to tool consumer" )
+    outbuf += %Q(onclick="window.location=')
+    outbuf += return_url
+    outbuf += %Q('; return false;".>\n)
   end
 end

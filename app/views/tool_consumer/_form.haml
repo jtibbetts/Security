@@ -9,7 +9,12 @@
     return false;
   }
 
-%h1 LTI Launcher
+  function onShowLog() {
+    window.open('/wirelog.html', '_blank')
+    return false;
+  }
+
+%h1 LTI Tool Consumer
 
 %form{:method => "post", :action => "/tool_consumer"}
   %input{:type => "hidden", :name => request_forgery_protection_token.to_s, :value => form_authenticity_token}
@@ -26,10 +31,10 @@
       %td
       %td
         %select{ name: 'tool'}
+          %option{value: 'launch_resource'} launch resource
           %option{value: 'echo'} echo
           %option{value: 'debug'} debug
           %option{value: 'force_timeout'} force timeout
-          %option{value: 'launch_resource'} launch resource
           %option{value: 'munge_secret'} munge secret
           %option{value: 'munge_payload'} munge payload
 
@@ -37,7 +42,38 @@
       %td
         %label
       %td
-        %input{:type => "submit", :value => "Launch", :class => "button"}
-      %td
-        %input{:type => "submit", :value => "Clear log", :class => "button", :onclick => "return onClearLog();"}
+        %input{:type => "submit", :value => "Launch Tool Provider", :class => "button"}
 
+    %tr
+      %td
+        %label
+      %td
+        %input{:type => "submit", :value => "Show log", :class => "button", :onclick => "return onShowLog();"}
+      %td
+        %input{:type => "submit", :value => "Reset all", :class => "button", :onclick => "return onClearLog();"}
+
+    %tr{height: "50"}
+      %td
+        %label
+
+
+
+  %table
+    %tr
+      %td
+      %td{align: "center"}
+        %h3 Result table
+
+    %tr
+      %th context_id
+      %th user_id
+      %th result
+
+    -@results.each do |r|
+      %tr
+        %td{width: "10%", align: "center"}
+          %label #{r.context_id}
+        %td{width: "10%", align: "center"}
+          %label #{r.user_id}
+        %td{width: "10%", align: "center"}
+          %label #{r.result}

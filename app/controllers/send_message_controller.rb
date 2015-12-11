@@ -4,31 +4,25 @@ class SendMessageController < ApplicationController
   EXPIRY_MINUTES = 5
 
   TOOL_PROVIDER = 'tp'
-  before_filter do |controller|
-    @tp_accessor = JsonAccessor.new(TOOL_PROVIDER)
-  end
 
-  def send_to_pseudo_outcomes_service(entry)
-    jwt_payload = JwtUtils.create_jwt_bearer_token(EXPIRY_MINUTES,
-                                                   user_id: session[:current_user_id],
-                                                   context_id: session[:current_context_id],
-                                                   resource_link_id: session[:current_resource_link_id])
+  def send_to_pseudo_outcomes_service(result_agent)
+    jwt_params = {"user_id" => result_agent['user_id'], "context_id" => result_agent['context_id'],
+                         "resource_link_id" => result_agent['resource_link_id']}
 
-    json_obj = {result: entry['results'].last}
-    headers = {}
-    headers['content_type'] = 'application/json'
-    headers["authorization: bearer #{jwt_payload}"]
-    uri = "#{TOOL_CONSUMER}/tool_consumer/post_results"
-    data = json_obj.to_json
+    result_agent_label = result_agent['result_agent_label']
+    result_value = result_agent['results'].last
+    url = "#{TOOL_CONSUMER}/tool_consumer/post_results"
+    json_payload = {'result_agent_label' => result_agent_label, 'result' => result_value}
+    data = json_payload.to_json
 
+    header_addends = {'content_type' => 'application/json'}
     tp_wire_log = Rails.application.config.tp_wire_log
-    if tp_wire_log
-      write_wirelog_header(tp_wire_log, "pseudo-outcome request",
-                           "post", uri, headers, {}, data, {})
-      JwtUtils.log_payload(tp_wire_log, jwt_payload, JWT_SECRET)
-    end
+    response = JwtUtils.send_lti_service("outcome service", url, "post", TC_TP_SECRET, EXPIRY_MINUTES,
+                                         jwt_params, data, header_addends, tp_wire_log)
 
-    response = HTTParty.post(uri, body: data, headers: headers, timeout: 120)
+    # TP records an incoming result
+    # eventstore_access_key = result_agent['eventstore_access_key']
+    # emit_event(eventstore_access_key, result_agent_label, 'TP', 'outcomes', 'result', result_value)
 
     response
 
@@ -52,48 +46,23 @@ class SendMessageController < ApplicationController
     zones = authorization.strip.split(' ')
     jwt_payload = zones.last
 
-    (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt_payload, JWT_SECRET)
+    (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt_payload, TC_TP_SECRET)
     if error_msg.nil?
-      metasession_id = payload['metasession_id']
-      entry = @tp_accessor.fetch_entry(metasession_id)
+      result_agent_label = payload['result_agent_label']
+      result_agent = ResultAgentAccessor.fetch_result_agent(result_agent_label)
 
       # add result to array
-      entry['results'] << result_str
+      result_agent['results'] << result_str
 
-      @tp_accessor.store_entry(metasession_id, entry)
+      ResultAgentAccessor.store_result_agent(result_agent_label, result_agent)
 
       # forward result_str back to TC via a protected REST service
-      send_to_pseudo_outcomes_service(entry)
+      send_to_pseudo_outcomes_service(result_agent)
 
       render text: "#{result_str} added to result set"
     else
       render text: error_msg
     end
-  end
-
-  private
-
-  def write_wirelog_header(wire_log, title, method, uri, headers = {},
-                           parameters = {}, body = nil, output_parameters = {})
-    wire_log.timestamp
-    wire_log.raw_log((title.nil?) ? 'LtiService' : "LtiService: #{title}")
-    wire_log.raw_log("#{method.upcase} #{uri}")
-    unless headers.blank?
-      wire_log.raw_log('Headers:')
-      headers.each { |k, v| wire_log.raw_log("#{k}: #{v}") }
-    end
-    parameters.each { |k, v| output_parameters[k] = v unless k =~ /^oauth_/ }
-
-    if output_parameters.length > 0
-      wire_log.raw_log('Parameters:')
-      output_parameters.each { |k, v| wire_log.raw_log("#{k}: #{v}") }
-    end
-    if body
-      wire_log.raw_log('Body:')
-      wire_log.raw_log(body)
-    end
-    wire_log.newline
-    wire_log.flush
   end
 
 end

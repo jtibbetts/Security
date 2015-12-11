@@ -1,7 +1,39 @@
 class ToolConsumerController < ApplicationController
 
   def clear_log
-    Rails.application.config.tc_wire_log.clear_log
+    style_heading = <<STYLE
+<head>
+<style>
+.ToolConsumer {
+}
+.ToolProvider {
+	margin-left: 25%;
+}
+.Remote {
+  margin-left: 50%;
+}
+.RemoteResponse {
+  margin-left: 25%;
+}
+.ToolProviderResponse {
+	margin-left: 25%;
+}
+.ToolConsumerResponse {
+}
+</style>
+</head>
+
+STYLE
+
+    full_filename = File.expand_path('public/wirelog.html')
+    f = File.open(full_filename, 'w')
+    f.truncate(0)
+    f.write(style_heading)
+    f.close
+
+    Result.delete_all
+    Event.delete_all
+    ResultAgent.delete_all
     redirect_to '/tool_consumer'
   end
 
@@ -17,13 +49,18 @@ class ToolConsumerController < ApplicationController
 
     tc_wire_log = Rails.application.config.tc_wire_log
     launch_form = JwtUtils.lti_launch_body("#{TOOL_PROVIDER}/tool_provider/lti_launch/#{params[:tool]}",
-                                     launch_payload, JWT_SECRET, tc_wire_log, params[:tool])
+                                     launch_payload, TC_TP_SECRET, tc_wire_log, params[:tool], false)
 
     render inline: launch_form
   end
 
+  def get_eventstore_profile
+    JwtUtils.create_jwt(TC_ES_SECRET, 720, {metasession_id: SecureRandom.hex})
+  end
+
   def index
     @payload_hash = create_payload_hash
+    @results = Result.all
     session[:payload] = @payload_hash
     render 'tool_consumer/index.haml'
   end
@@ -40,39 +77,9 @@ class ToolConsumerController < ApplicationController
     payload_hash[:context_id] = 'math-101.781816'
     payload_hash[:context_type] = 'CourseSection'
     payload_hash[:launch_presentation_return_url] = "#{TOOL_CONSUMER}/tool_consumer"
+    payload_hash[:launch_id] = SecureRandom.uuid
+    payload_hash[:eventstore_profile_url] = "#{TOOL_CONSUMER}/tool_consumer/eventstore_profile"
     payload_hash
-  end
-
-  def create_lti_message(launch_url, form_params, title)
-    body = ''
-    body +=       %Q(
-<div id="ltiLaunchFormSubmitArea">
-  <form action="#{launch_url}"
-    name="ltiLaunchForm" id="ltiLaunchForm" method="post"
-    encType="application/x-www-form-urlencoded">
-)
-    form_params.each_pair do |k, v|
-      body += %Q(      <input type="hidden" name="#{k}" value="#{CGI.escapeHTML(v)}"/>\n)
-    end
-
-    body += %Q{  </form>
-</div>
-<script language="javascript">
-  document.ltiLaunchForm.submit();
-</script>
-      }
-
-    tc_wire_log = Rails.application.config.tc_wire_log
-    if tc_wire_log
-      tc_wire_log.timestamp
-      tc_wire_log.raw_log((title.nil?) ? 'LtiMessage' : "LtiMessage: #{title}")
-      tc_wire_log.raw_log "LaunchUrl: #{launch_url}"
-      tc_wire_log.raw_log body.strip
-      tc_wire_log.newline
-      tc_wire_log.flush
-    end
-
-    body
   end
 
 end

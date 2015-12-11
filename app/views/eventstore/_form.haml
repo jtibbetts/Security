@@ -28,21 +28,25 @@
     %thead{:style => "font-weight: bold"}
       %tr
         %td
-          ResultAgent count: #{ResultAgentAccessor.count_result_agents}
+          Metasession count: #{@result_agent_accessor.count_result_agents}
 
     %tbody
       %tr
         %td{:width => '30%'}
-          %label ResultAgent label
+          %label Metasession ID
+        %td{:width => '30%'}
+          %label Metasession label
         %td{:width => '30%'}
           %label Captured data
 
-    -@result_agents.each do |result_agent|
+    -@result_agents.each do |entry|
       %tr
         %td
-          %label #{result_agent['result_agent_label']}
+          %label #{entry['uid']}
         %td
-          %label #{result_agent['results']}
+          %label #{entry['label']}
+        %td
+          %label #{entry['results']}
 
     %tr{:style => 'line-height: 20px;'}
       %td &nbsp;
@@ -53,7 +57,7 @@
       %td
         %input{:type => "submit", :value => "Refresh Window", :class => "button", :onclick => "return onRefresh();"}
       %td
-        %input{:type => "submit", :value => "Clear result agents", :class => "button", :onclick => "return onClearSession();"}
+        %input{:type => "submit", :value => "Clear session", :class => "button", :onclick => "return onClearSession();"}
 
       %tr
         %td
@@ -67,9 +71,14 @@
 
       %tr
         %td
-          %label Enter ResultAgent label
+          %label New Metasession ID
         %td
-          %input{:type=>"text", :name=>"result_agent_label", :required => true}
+          %label #{@metasession_id}
+      %tr
+        %td
+          %label Enter metasession label
+        %td
+          %input{:type=>"text", :name=>"metasession_label", :required => true}
 
       %tr
         %td &nbsp;

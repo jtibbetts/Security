@@ -1,15 +1,15 @@
-ja = JsonAccessor.new('tp')
-json = ja.fetch_entry('asdf')
+ja = ResultAgentAccessor.new('tp')
+json = ja.fetch_result_agent('asdf')
 puts json.inspect
 json['foo'] = 'bar'
 json['test'] = 'some'
-ja.store_entry('asdf', json)
+ja.store_result_agent('asdf', json)
 
 
-json = ja.fetch_entry('qwer')
+json = ja.fetch_result_agent('qwer')
 puts json.inspect
 json['able'] = 'one'
-ja.store_entry('qwer', json)
+ja.store_result_agent('qwer', json)
 
-puts "Count: #{ja.count_entries}"
+puts "Count: #{ja.count_result_agents}"
 
