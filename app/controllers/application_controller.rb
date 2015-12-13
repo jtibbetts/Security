@@ -15,24 +15,40 @@ class ApplicationController < ActionController::Base
   TC_TP_SECRET = 'my$ecretK3y'
   TC_ES_SECRET = 'myEvent$toreK3y'
 
-  def emit_event(eventstore_access_jwt, metasession_id, event_source, event_type, event_name, event_value)
-    jwt_params = {'metasession_id' => metasession_id}
-    json_payload = {'event_source' => event_source, 'event_type' => event_type,
-              'event_name' => event_name, 'event_value' => event_value}
-    data = json_payload.to_json
-    url = "#{EVENT_STORE}/eventstore/post_event"
+  def get_eventstore_access_jwt(correlation_id)
+    jwt_params = {'correlation_id' => correlation_id}
 
-    headers = {}
-    headers['content_type'] = 'application/json'
-    headers["authorization"] =  "bearer #{eventstore_access_jwt}"
+    url = "#{TOOL_CONSUMER}/tool_consumer/eventstore_access_jwt"
 
-    response = HTTParty.post(url, body: data, headers: headers, timeout: 120)
+    header_addends = {'accept' => 'application/json'}
 
-    tp_wire_log = Rails.application.config.tp_wire_log
-    if tp_wire_log
-      write_wirelog_header(tp_wire_log, "pseudo-outcome request",
-                           "post", url, headers, {}, data, {})
+    response = JwtUtils.send_lti_service("Get Eventstore Access JWT", url, "get", TC_TP_SECRET,
+                                         5, jwt_params, nil, header_addends,
+                                         WirelogUtils.tp_wire_log, WirelogUtils.tc_wire_log)
+
+    json_obj = JSON.load(response.body)
+    if response.code == 200
+      result = json_obj['jwt']
+    else
+      raise "Error getting eventstore_access_jwt: #{error_msg}"
     end
+    result
+  end
+
+  def emit_event(title, src_wirelog, eventstore_access_jwt, metasession_id, event_source,
+                 event_type, event_name, event_value)
+    jwt_params = {'metasession_id' => metasession_id}
+    json_payload = {'eventstore_access_jwt' => eventstore_access_jwt, 'event_source' => event_source,
+                    'event_type' => event_type, 'event_name' => event_name, 'event_value' => event_value}
+
+    data = json_payload.to_json
+    url = "#{EVENT_STORE}/events/post_event"
+
+    header_addends = {'content_type' => 'application/json'}
+
+    response = JwtUtils.send_lti_service(title, url, "post", TC_ES_SECRET,
+                     5, jwt_params, data, header_addends,
+                     src_wirelog, WirelogUtils.rem_wire_log)
 
     response
 

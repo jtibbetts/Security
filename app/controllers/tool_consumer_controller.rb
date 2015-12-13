@@ -47,15 +47,22 @@ STYLE
       launch_payload[:exp] = Time.now.to_i + 5 * 60    # five minutes from now
     end
 
-    tc_wire_log = Rails.application.config.tc_wire_log
     launch_form = JwtUtils.lti_launch_body("#{TOOL_PROVIDER}/tool_provider/lti_launch/#{params[:tool]}",
-                                     launch_payload, TC_TP_SECRET, tc_wire_log, params[:tool], false)
+                                     launch_payload, TC_TP_SECRET, WirelogUtils.tc_wire_log, params[:tool], false)
 
     render inline: launch_form
   end
 
-  def get_eventstore_profile
-    JwtUtils.create_jwt(TC_ES_SECRET, 720, {metasession_id: SecureRandom.hex})
+  def get_eventstore_access_jwt
+    (jwt_payload, json_obj, error_msg) = JwtUtils.read_lti_service(request, TC_TP_SECRET, WirelogUtils.tc_wire_log)
+    if error_msg.nil?
+      new_jwt_payload = jwt_payload.clone
+      new_jwt_payload.delete('exp')
+      jwt = JwtUtils.create_jwt(TC_ES_SECRET, 12.hours, new_jwt_payload)
+      render status: 200, json: {jwt: jwt}
+    else
+      render status: 500, json: {error_msg: error_msg}
+    end
   end
 
   def index
@@ -63,6 +70,15 @@ STYLE
     @results = Result.all
     session[:payload] = @payload_hash
     render 'tool_consumer/index.haml'
+  end
+
+  def launch_eventstore
+    launch_payload = session[:payload]
+
+    launch_form = JwtUtils.lti_launch_body("#{EVENT_STORE}/events/lti_launch",
+                                           launch_payload, TC_ES_SECRET, WirelogUtils.tc_wire_log, 'Eventstore', false)
+
+    render inline: launch_form
   end
 
   private

@@ -1,0 +1,46 @@
+
+%h1 LTI Eventstore
+
+%form{:method => "get", :action => "/tool_consumer"}
+  %table
+    %thead{:style => "font-weight: bold"}
+      %tr
+        %td
+          Event count: #{@events.count}
+
+    %tbody
+      %tr
+        %td{:width => '10%'}
+          %label Event source
+        %td{:width => '10%'}
+          %label Event type
+        %td{:width => '10%'}
+          %label Event name
+        %td{:width => '10%'}
+          %label Time created
+        %td{:width => '30%'}
+          %label Event value
+
+
+    -@events.each do |event|
+      %tr
+        %td
+          %label #{event.event_source}
+        %td
+          %label #{event.event_type}
+        %td
+          %label #{event.event_name}
+        %td
+          %label #{event.created_at}
+        %td
+          %label #{event.event_value}
+
+
+    %tr{:style => 'line-height: 20px;'}
+      %td &nbsp;
+
+      %tr
+        %td
+          %input{:type => "submit", :value => "Return to tool consumer",
+          :onclick => "window.location='/tool_consumer'; return false;"}
+

@@ -4,9 +4,9 @@ class JwtUtils
   require 'base64'
 
   # primitives
-  def self.create_jwt(secret, expiry_minutes, payload)
-    if expiry_minutes > 0
-      expiry_stamp = Time.now.to_i + expiry_minutes * 60    # minutes from now
+  def self.create_jwt(secret, expiry_seconds, payload)
+    if expiry_seconds > 0
+      expiry_stamp = Time.now.to_i + expiry_seconds
     end
     payload['exp'] = expiry_stamp
     JwtUtils.encode_jwt payload, secret
@@ -44,12 +44,9 @@ class JwtUtils
   # LTI launch
   def self.lti_launch_body(launch_url, launch_payload, secret, wire_log, title, is_open_in_external_window=false)
     attribute_for_external_window = is_open_in_external_window ? 'target="_blank"' : ''
-    payload = launch_payload.clone
 
     body = ''
-
     # for endpoint verification
-    payload[:normalized_url] = self.normalize_url(launch_url)
     jwt_payload = JwtUtils.encode_jwt(launch_payload, secret)
 
     body +=       %Q(
@@ -84,31 +81,18 @@ class JwtUtils
   end
 
   # LTI services
-  # Low-level: Note that these do marshalling/parsing but leaves actual transmission/reception to its consumers
-  def self.create_lti_service(url, method, secret, expiry_minutes, jwt_params, body_data=nil)
-    payload = jwt_params.clone
-    # for endpoint verification
-    payload[:normalized_url] = self.normalize_url(url)
-    payload[:method] = method.downcase
-    if ['post', 'put', 'patch'].include? payload[:method] and body_data.present?
-      payload[:jwt_body_hash] = self.create_body_hash(secret, body_data)
-    end
-    jwt = JwtUtils.create_jwt(secret, expiry_minutes, payload)
-    puts "JWT payload: #{jwt}"
-    [payload, jwt]
-  end
 
-  # High-level: This does the whole job
-  def self.send_lti_service(title, url, method, secret, expiry_minutes, jwt_params, body_data="", header_addends={},
+  def self.send_lti_service(title, url, method, secret, expiry_seconds, jwt_params,
+      body_data="", header_addends={},
       src_wirelog=nil, trg_wirelog=nil)
-    (payload, jwt) = JwtUtils.create_lti_service(url, method, secret, expiry_minutes, jwt_params, body_data)
+    jwt = JwtUtils.create_jwt(secret, expiry_seconds, jwt_params)
     headers = header_addends.clone
     headers['authorization'] = "bearer #{jwt}"
 
     if src_wirelog
       WirelogUtils.write_wirelog_header(src_wirelog, title,
                            "post", url, headers, {}, body_data, {})
-      JwtUtils.log_payload(src_wirelog, jwt, TC_TP_SECRET)
+      JwtUtils.log_payload(src_wirelog, jwt, secret)
     end
 
     case method
@@ -123,21 +107,8 @@ class JwtUtils
     end
 
     WirelogUtils.log_response(trg_wirelog, response, title) if trg_wirelog
-  end
 
-  def self.verify_lti_service(jwt, secret, body_data=nil)
-    (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt, secret)
-    if error_msg.nil?
-      jwt_body_hash = payload['jwt_body_hash']
-      if jwt_body_hash.present? and body_data.present?
-        if !self.check_body_hash(secret, jwt_body_hash, body_data)
-          error_msg = "body_hash doesn't match payload"
-        end
-      elsif jwt_body_hash.present? or body_data.present?
-        error_msg = 'payload or body_hash missing'
-      end
-    end
-    [payload, headers, error_msg]
+    response
   end
 
   def self.read_lti_service(request, secret, wirelog)
@@ -146,33 +117,15 @@ class JwtUtils
     json_str = request.body.read
     json_obj = JSON.load(json_str)
 
-    (payload, headers, error_msg) = JwtUtils.verify_lti_service(jwt, secret, json_str)
+    (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt, secret)
 
     if error_msg.present?
       msg = "VerificationError on Post Result: #{error_msg}"
-      [nil, nil, msg]
+      [nil, nil, error_msg]
       return
     end
 
-    [json_obj, payload, error_msg]
-  end
-
-  private
-
-  def self.create_body_hash(secret, data)
-    JwtUtils.create_jwt(secret, 1000, {body: data})
-  end
-
-  def self.check_body_hash(secret, jwt_body_hash, data)
-    (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt_body_hash, secret)
-    if error_msg.blank?
-      payload['body'] == data
-    end
-  end
-
-  def self.normalize_url(url)
-    u = URI.parse(url)
-    "#{u.scheme.downcase}://#{u.host.downcase}#{(u.scheme.downcase == 'http' && u.port != 80) || (u.scheme.downcase == 'https' && u.port != 443) ? ":#{u.port}" : ""}#{(u.path && u.path != '') ? u.path : '/'}"
+    [payload, json_obj, error_msg]
   end
 
 end

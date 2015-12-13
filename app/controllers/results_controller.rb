@@ -3,7 +3,7 @@ class ResultsController < ApplicationController
 
   def create
     tc_wire_log = Rails.application.config.tc_wire_log
-    (json_obj, jwt_payload, error_msg) = JwtUtils.read_lti_service(request, TC_TP_SECRET, tc_wire_log)
+    (jwt_payload, json_obj, error_msg) = JwtUtils.read_lti_service(request, TC_TP_SECRET, tc_wire_log)
 
     result_value = json_obj['result']
     result_agent_label = json_obj['result_agent_label']

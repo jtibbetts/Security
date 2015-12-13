@@ -3,7 +3,7 @@ class EventsController < ApplicationController
 
   def create
     tc_wire_log = Rails.application.config.tc_wire_log
-    (json_obj, jwt_payload, error_msg) = JwtUtils.read_lti_service(request, TC_TP_SECRET, tc_wire_log)
+    (jwt_payload, json_obj, error_msg) = JwtUtils.read_lti_service(request, TC_ES_SECRET, tc_wire_log)
 
     event_source = json_obj['event_source']
     event_type = json_obj['event_type']
@@ -24,12 +24,14 @@ class EventsController < ApplicationController
       jwt_payload = params[:jwt_payload]
       tool = params[:tool]
 
-      (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt_payload, secret)
+      (payload, headers, error_msg) = JwtUtils.decode_jwt(jwt_payload, TC_ES_SECRET)
       if error_msg.present?
         raise "Authentication failure: #{error_msg}"
       end
 
-      render 'eventstore/eventstore'
+      @events = Event.all
+
+      render 'index'
     end
   end
 
