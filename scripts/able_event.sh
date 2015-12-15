@@ -10,6 +10,13 @@ CURL -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyZXN1bHRf
 printf '
 result reported
 '
+# continue for result + event dispatch
+evt_prefix='{"event_source":"REM","event_type":"action","event_name":"result", "event_value":"'
+evt_suffix='"}'
+CURL -H 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJldmVudHN0b3JlX3Nlc3Npb25faWQiOiIzNmMwYjdjNS1hMjU5LTRmNmUtOWFmNi0zMWM2ZGIyODk0MjYiLCJzZW5zb3JfaWQiOiJ0cC0xMjM0IiwiZXhwIjoxNDUwMjQwNjY5fQ.u6OcwQqg1ORLm_0RvpehrpB_fcjVW3eMCnW1JeJreBs' -d "$evt_prefix$1$evt_suffix" http://kinexis3002.ngrok.io/events/post_event
+printf '
+event reported
+'
 printf '
 script done
 '

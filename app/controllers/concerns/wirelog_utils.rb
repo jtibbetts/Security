@@ -111,7 +111,7 @@ class WirelogUtils
       wire_log.raw_log('Body:')
       wire_log.raw_log(body)
     end
-    wire_log.newline
+    # wire_log.newline
     wire_log.flush
   end
 
@@ -135,7 +135,7 @@ class WirelogUtils
         raw_log("#{response.body}")
       end
     end
-    newline
+    # newline
     flush(css_class: "#{@wire_log_name}Response")
   end
 

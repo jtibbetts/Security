@@ -15,15 +15,18 @@ class ApplicationController < ActionController::Base
   TC_TP_SECRET = 'my$ecretK3y'
   TC_ES_SECRET = 'myEvent$toreK3y'
 
-  def get_eventstore_access_jwt(correlation_id)
-    jwt_params = {'correlation_id' => correlation_id}
+  EXPIRY_STANDARD = 5.minutes
+
+  def get_eventstore_access_jwt(eventstore_session_id, sensor_id)
+    jwt = JwtUtils.create_jwt(TC_TP_SECRET, EXPIRY_STANDARD,
+                              {'eventstore_session_id' => eventstore_session_id, 'sensor_id' => sensor_id})
 
     url = "#{TOOL_CONSUMER}/tool_consumer/eventstore_access_jwt"
 
     header_addends = {'accept' => 'application/json'}
 
     response = JwtUtils.send_lti_service("Get Eventstore Access JWT", url, "get", TC_TP_SECRET,
-                                         5, jwt_params, nil, header_addends,
+                                         jwt, nil, header_addends,
                                          WirelogUtils.tp_wire_log, WirelogUtils.tc_wire_log)
 
     json_obj = JSON.load(response.body)
@@ -37,8 +40,7 @@ class ApplicationController < ActionController::Base
 
   def emit_event(title, src_wirelog, eventstore_access_jwt, metasession_id, event_source,
                  event_type, event_name, event_value)
-    jwt_params = {'metasession_id' => metasession_id}
-    json_payload = {'eventstore_access_jwt' => eventstore_access_jwt, 'event_source' => event_source,
+    json_payload = {'event_source' => event_source,
                     'event_type' => event_type, 'event_name' => event_name, 'event_value' => event_value}
 
     data = json_payload.to_json
@@ -46,8 +48,8 @@ class ApplicationController < ActionController::Base
 
     header_addends = {'content_type' => 'application/json'}
 
-    response = JwtUtils.send_lti_service(title, url, "post", TC_ES_SECRET,
-                     5, jwt_params, data, header_addends,
+    response = JwtUtils.send_lti_service(title, url, "post", TC_ES_SECRET, eventstore_access_jwt,
+                     data, header_addends,
                      src_wirelog, WirelogUtils.rem_wire_log)
 
     response

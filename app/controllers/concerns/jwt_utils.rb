@@ -81,11 +81,9 @@ class JwtUtils
   end
 
   # LTI services
-
-  def self.send_lti_service(title, url, method, secret, expiry_seconds, jwt_params,
+  def self.send_lti_service(title, url, method, secret, jwt,
       body_data="", header_addends={},
       src_wirelog=nil, trg_wirelog=nil)
-    jwt = JwtUtils.create_jwt(secret, expiry_seconds, jwt_params)
     headers = header_addends.clone
     headers['authorization'] = "bearer #{jwt}"
 

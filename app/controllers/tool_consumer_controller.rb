@@ -1,6 +1,6 @@
 class ToolConsumerController < ApplicationController
 
-  def clear_log
+   def clear_log
     style_heading = <<STYLE
 <head>
 <style>
@@ -34,6 +34,7 @@ STYLE
     Result.delete_all
     Event.delete_all
     ResultAgent.delete_all
+
     redirect_to '/tool_consumer'
   end
 
@@ -93,7 +94,7 @@ STYLE
     payload_hash[:context_id] = 'math-101.781816'
     payload_hash[:context_type] = 'CourseSection'
     payload_hash[:launch_presentation_return_url] = "#{TOOL_CONSUMER}/tool_consumer"
-    payload_hash[:launch_id] = SecureRandom.uuid
+    payload_hash[:eventstore_session_id] = SecureRandom.uuid
     payload_hash[:eventstore_profile_url] = "#{TOOL_CONSUMER}/tool_consumer/eventstore_profile"
     payload_hash
   end

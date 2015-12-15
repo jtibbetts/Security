@@ -1,16 +1,16 @@
 class ToolProviderController  < ApplicationController
   skip_before_action :verify_authenticity_token
 
-  EXPIRY_STANDARD = 5.minutes
-
   TOOL_PROVIDER_CODE = 'tp'
+  TP_SENSOR_ID = "#{TOOL_PROVIDER_CODE}-1234"
+  RESULT_AGENT_PREFIX = 'RESULT_AGENT-'
 
   def lti_launch
     if request.post?
       jwt_payload = params[:jwt_payload]
       tool = params[:tool]
 
-      # TESTING: break a secret
+        # TESTING: break a secret
       if tool == 'munge_secret'
         secret = 'bad_secret'
       else
@@ -29,10 +29,14 @@ class ToolProviderController  < ApplicationController
 
       # get events endpoint
 
-      session[:launch_id] = payload['launch_id']
-      session[:eventstore_access_jwt] = get_eventstore_access_jwt(session[:launch_id])
+      session[:eventstore_session_id] = payload['eventstore_session_id']
+      session[:eventstore_access_jwt] = get_eventstore_access_jwt(session[:eventstore_session_id], TP_SENSOR_ID)
 
-      tool = 'echo' unless self.respond_to? tool
+      emit_event('Event-->Tool launched', WirelogUtils.tp_wire_log, session[:eventstore_access_jwt],
+                 'lti_launch', 'TP', 'launched', 'entry', tool)
+
+
+       tool = 'echo' unless self.respond_to? tool
       self.public_send(tool, payload )
     else
       launch_resource()
@@ -98,21 +102,23 @@ class ToolProviderController  < ApplicationController
       # jwt for use by CURL script...add a per-agent secret (extra credit)
       agent_secret = SecureRandom.hex
       jwt_payload = JwtUtils.create_jwt(TC_TP_SECRET, EXPIRY_STANDARD,
-                                            result_agent_label: result_agent_label,
-                                            agent_secret: agent_secret,
-                                            user_id: session[:current_user_id],
-                                            context_id: session[:current_context_id],
-                                            resource_link_id: session[:current_resource_link_id])
+                                            result_agent_label: result_agent_label)
 
-      emit_result_script(result_agent_label, jwt_payload, Time.now + EXPIRY_STANDARD.minutes)
+      # emit result script
+      emit_result_script(result_agent_label, session['current_user_id'], session['current_context_id'],
+                         Time.now + EXPIRY_STANDARD.minutes, jwt_payload)
 
-      @result_agent['user_id'] = session['current_user_id']
+      # emit result + event script
+      emit_result_script(result_agent_label, session['current_user_id'], session['current_context_id'],
+                         Time.now + EXPIRY_STANDARD.minutes, jwt_payload, session[:eventstore_access_jwt])
+
+      eventstore_access_jwt = session[:eventstore_access_jwt]
+
       @result_agent['context_id'] = session['current_context_id']
-      @result_agent['resource_link_id'] = session['current_resource_link_id']
+      @result_agent['eventstore_access_jwt'] = eventstore_access_jwt
       @result_agent['results'] = []
 
-      eventstore_access_key = session['eventstore_access_key']
-      emit_event("Create result agent", WirelogUtils.tp_wire_log, eventstore_access_key, result_agent_label,
+      emit_event("Event-->create result agent", WirelogUtils.tp_wire_log, eventstore_access_jwt, result_agent_label,
                  'TP', 'session', 'create_emitter', result_agent_label)
     ensure
       ResultAgentAccessor.store_result_agent(result_agent_label, @result_agent)
@@ -126,12 +132,13 @@ class ToolProviderController  < ApplicationController
     ResultAgentAccessor.clear_result_agents
     session[:current_result_agent_label] = nil
     Dir.glob('scripts/*_emit.sh').each {|fname| File.delete(fname)}
+    Dir.glob('scripts/*_event.sh').each {|fname| File.delete(fname)}
     redirect_to '/tool_provider/lti_launch/launch_resource'
   end
 
   private
 
-  def emit_result_script(label, jwt, expiry_stamp)
+  def emit_result_script(label, result_user, context_id, expiry_stamp, result_jwt, eventstore_access_jwt=nil)
     outbuf = ""
     outbuf += %Q(#!/usr/bin/env bash\n)
     outbuf += %Q(# The access token used in this script expires at #{Time.at(expiry_stamp).utc.iso8601}\n)
@@ -139,13 +146,29 @@ class ToolProviderController  < ApplicationController
     outbuf += %Q(    echo "usage: <scriptname> <numeric-score-value>"\n)
     outbuf += %Q(    return 1\n)
     outbuf += %Q(fi\n)
-    outbuf += %Q(prefix='{"isbn":"9780203370360","client":"unit_tester","results":[{"score":"'\n)
+    outbuf += %Q(prefix='{"isbn":"9780203370360","client":"unit_tester","result_user":"#{result_user}",)
+    outbuf += %Q("context_id":"#{context_id}", "results":[{"score":"'\n)
     outbuf += %Q(suffix='", "location":"2-1","timestamp":"#{Time.now.utc.iso8601}","metadata":"{}"}]}'\n)
-    outbuf += %Q(CURL -H 'Authorization: Bearer #{jwt}' )
+    outbuf += %Q(CURL -H 'Authorization: Bearer #{result_jwt}' )
     outbuf += %Q(-d "$prefix$1$suffix" )
-    outbuf += %Q(#{TOOL_PROVIDER}/tool_provider/send_message)
+    outbuf += %Q(#{TOOL_PROVIDER}/tool_provider/send_message\n)
+    outbuf += %Q(printf '\nresult reported\n'\n)
 
-    fname = "scripts/#{label}_emit.sh"
+    if eventstore_access_jwt.present?
+      outbuf += %Q(# continue for result + event dispatch\n)
+      outbuf += %Q(evt_prefix='{"event_source":"REM","event_type":"action",)
+      outbuf += %Q("event_name":"result", "event_value":"'\n)
+      outbuf += %Q(evt_suffix='"}'\n)
+      outbuf += %Q(CURL -H 'Authorization: Bearer #{eventstore_access_jwt}' )
+      outbuf += %Q(-d "$evt_prefix$1$evt_suffix" )
+      outbuf += %Q(#{EVENT_STORE}/events/post_event\n)
+      outbuf += %Q(printf '\nevent reported\n'\n)
+    end
+
+    outbuf += %Q(printf '\nscript done\n')
+
+    fname_suffix = eventstore_access_jwt.blank? ? '_emit.sh' : '_event.sh'
+    fname = "scripts/#{label}#{fname_suffix}"
     File.open(fname, "w") { |file| file.write outbuf }
     File.open(fname).chmod(0755)
 

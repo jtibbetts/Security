@@ -1,27 +1,26 @@
 class SendMessageController < ApplicationController
   skip_before_action :verify_authenticity_token
 
-  EXPIRY_STANDARD = 5.minutes
-
   TOOL_PROVIDER = 'tp'
 
   def send_to_pseudo_outcomes_service(result_agent_label, result_agent)
-    jwt_params = {"user_id" => result_agent['user_id'], "context_id" => result_agent['context_id'],
-                         "resource_link_id" => result_agent['resource_link_id']}
+    jwt = JwtUtils.create_jwt(TC_TP_SECRET, EXPIRY_STANDARD, {})
 
+    result_user = result_agent['result_user']
     result_value = result_agent['results'].last
     url = "#{TOOL_CONSUMER}/tool_consumer/post_results"
-    json_payload = {'result_agent_label' => result_agent_label, 'result' => result_value}
+    json_payload = {'result_agent_label' => result_agent_label, 'result_user_id' => result_user,
+                    "context_id" => result_agent['context_id'], 'result' => result_value}
     data = json_payload.to_json
 
     header_addends = {'content_type' => 'application/json'}
     tp_wire_log = Rails.application.config.tp_wire_log
-    response = JwtUtils.send_lti_service("outcome service", url, "post", TC_TP_SECRET, EXPIRY_STANDARD,
-                                         jwt_params, data, header_addends, tp_wire_log)
+    response = JwtUtils.send_lti_service("outcome service", url, "post", TC_TP_SECRET,
+                                         jwt, data, header_addends, tp_wire_log)
 
     # TP records an incoming result
-    eventstore_access_key = result_agent['eventstore_access_key']
-    emit_event("Incoming result", WirelogUtils.tp_wire_log, eventstore_access_key, result_agent_label, 'TP', 'outcomes', 'result', result_value)
+    eventstore_access_jwt = result_agent['eventstore_access_jwt']
+    emit_event("Event-->incoming result", WirelogUtils.tp_wire_log, eventstore_access_jwt, result_agent_label, 'TP', 'outcomes', 'result', result_value)
 
     response
 
@@ -46,10 +45,13 @@ class SendMessageController < ApplicationController
         rem_wire_log = Rails.application.config.rem_wire_log
         rem_wire_log.log(outbuf)
 
+        JwtUtils.log_payload(rem_wire_log, jwt, TC_TP_SECRET)
+
         result_str = json['results'][0]['score']
         result = result_str
 
         # add result to array
+        result_agent['result_user'] =json['result_user']
         result_agent['results'] << result_str
 
         ResultAgentAccessor.store_result_agent(result_agent_label, result_agent)
